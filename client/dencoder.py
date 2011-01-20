@@ -76,7 +76,7 @@ def checkPaths():
   if (path.exists(basePath + sourcePath)):
     return
   else:
-    logger.info("Exiting because source path doesn't exist, is the file system mounted?")
+    logger.info(" [+] Exiting because source path doesn't exist, is the file system mounted?")
     exit()
 
 def dencoderSetup():
@@ -85,7 +85,7 @@ def dencoderSetup():
 
 def encodeVideo(filename,outfile,preset):
   global hbpid
-  logger.debug(" params are %s %s %s" % (filename, outfile, preset,))
+  logger.debug(" [-] params are %s %s %s" % (filename, outfile, preset,))
   logger.info(" [-] encoding " + filename + " using " + preset)
   args = [hbpath,'-Z',preset,'-i',basePath+sourcePath+filename,'-o',basePath+destPath+outfile,'--main-feature']
   p = subprocess.Popen(args,stdout=open(hblog, 'w'),stderr=open(hberr,'w'))
@@ -109,6 +109,12 @@ def dojob_callback(ch, method, header, body):
   checkPaths()
   process = encodeVideo(filename,outfile,preset)
   logger.debug(" [-] sending message ack")
+
+  # ackknowledge that the message was received.  Here we're telling 
+  # the message queue that we're done with the job.  Future versions
+  # of this client should be able to kill an encode and NOT ack the message.
+  # This way other clients can take over and do the encode in the event that
+  # another client failed to encode the file for whatever reason.
   ch.basic_ack(delivery_tag = method.delivery_tag)
   logger.info(" [-] Done")
   hbpid = 0
@@ -137,62 +143,76 @@ def handleSigTerm(thing1,thing2):
 
 def resolve_callback(sdRef, flags, interfaceIndex, errorCode, fullname,
                      hosttarget, port, txtRecord):
-    if errorCode == pybonjour.kDNSServiceErr_NoError:
-        hosts.append(hosttarget)
-        resolved.append(True)
+  if errorCode == pybonjour.kDNSServiceErr_NoError:
+      hosts.append(hosttarget)
+      resolved.append(True)
 
 
 def browse_callback(sdRef, flags, interfaceIndex, errorCode, serviceName,
                     regtype, replyDomain):
-    if errorCode != pybonjour.kDNSServiceErr_NoError:
-        return
+  if errorCode != pybonjour.kDNSServiceErr_NoError:
+      return
 
-    if not (flags & pybonjour.kDNSServiceFlagsAdd):
-        logger.info( 'Service removed')
-        return
+  if not (flags & pybonjour.kDNSServiceFlagsAdd):
+    # needs testing but this should happen when the RabbitMQ server is 
+    # going away as advertised by Bonjour
+    logger.info( ' [+] RabbitMQ is going away')
+    return
 
-    logger.info('Service added; resolving')
+  # we get here when we've successfully queried for _amqp._tcp
+  logger.info(' [+] Found a RabbitMQ server, resolving')
 
-    resolve_sdRef = pybonjour.DNSServiceResolve(0,
-                                                interfaceIndex,
-                                                serviceName,
-                                                regtype,
-                                                replyDomain,
-                                                resolve_callback)
+  resolve_sdRef = pybonjour.DNSServiceResolve(0,
+                                              interfaceIndex,
+                                              serviceName,
+                                              regtype,
+                                              replyDomain,
+                                              resolve_callback)
 
-    try:
-        while not resolved:
-            ready = select.select([resolve_sdRef], [], [], bjTimeout)
-            if resolve_sdRef not in ready[0]:
-                logger.critical( 'Resolve timed out')
-                break
-            pybonjour.DNSServiceProcessResult(resolve_sdRef)
-        else:
-            resolved.pop()
-    finally:
-        resolve_sdRef.close()
+  try:
+    while not resolved:
+      ready = select.select([resolve_sdRef], [], [], bjTimeout)
+      if resolve_sdRef not in ready[0]:
+        logger.critical( 'Resolve timed out')
+        break
+      pybonjour.DNSServiceProcessResult(resolve_sdRef)
+      else:
+        resolved.pop()
+  finally:
+    resolve_sdRef.close()
 
-### I can't get bonjour stuff working on the server side so for now
-### everyone is stuck manually setting this config option
+
+# attempt to find the RabbitMQ server using bonjour
 browse_sdRef = pybonjour.DNSServiceBrowse(regtype = regtype,
                                           callBack = browse_callback)
 
 try:
-    ready = select.select([browse_sdRef], [], [])
-    if browse_sdRef in ready[0]:
-       pybonjour.DNSServiceProcessResult(browse_sdRef)
+  ready = select.select([browse_sdRef], [], [])
+  if browse_sdRef in ready[0]:
+    pybonjour.DNSServiceProcessResult(browse_sdRef)
 except KeyboardInterrupt:
-    pass
+  pass
 finally:
-    browse_sdRef.close()
+  browse_sdRef.close()
 
 
+# currently this script is unable to handle multiple AMQP servers and so we
+# bail out
 if len(hosts) > 1:
    logger.critical('found too many AMQP (RabbitMQ) hosts, unable to cope!')
    exit()
+
+
+
 RabbitMQServer = hosts[0]
   
+# ensure that configured paths exist.  If they don't, HandBrakeCLI will
+# immediately fail but as the script is currently written it'll still
+# ack the message.  This ack tells RabbitMQ the encode was successful, 
+# even though it wasn't
 checkPaths()
+
+# be ready to handle a SIGTERM
 signal.signal(signal.SIGTERM,handleSigTerm)
 
 logger.info(' [+] connecting to RabbitMQ @%s' %(RabbitMQServer,))
@@ -206,8 +226,18 @@ except:
   logger.info(' [+] unable to cope, shutting down.  Please check RabbitMQ host and configuration')
   exit()
 
+
+# declare a queue named encode jobs in case it hasn't already
+# been declared.  The server will places messages here.
 channel.queue_declare(queue='encodejobs')
 
+# prefetch_count=1 causes this client to just get 1
+# message from the queue.  By doing this any new client
+# that connects to the message bus will be able to get
+# any messages left in the queue instead of only new ones
+# that were added after an existing client connected.  
+# This is important so that you can scale up your encode
+# cluster on the fly
 channel.basic_qos(prefetch_count=1)
 channel.basic_consume(dojob_callback,
                       queue='encodejobs')

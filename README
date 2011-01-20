@@ -1,1 +1,3 @@
-Readme for Dencoder
+Dencoder is a collection of tools that allow HandBrakeCLI to work from a network based queue.  Multiple HandBrakeCLI instances can run across any number of computers (Mac's at this time) in order to speed up the process.
+
+RabbitMQ is used as the queue handler though technically any AMQP implementation would work.  More information about how the project works is coming.

@@ -1,0 +1,9 @@
+Package: dencoder-client
+Version: 1.0.0-1
+Section: video
+Depends: python (>= 2.6.0), python-pip
+Architecture: all
+Maintainer: Dustin Rue [dustin@webscalesauce.com]
+Provides: dencoder-client
+Priority: optional
+Description: Distributed h264 encoder system

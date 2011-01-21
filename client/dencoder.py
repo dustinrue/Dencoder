@@ -73,9 +73,7 @@ outfile.close
 
 def checkPaths():
   logger.debug("checking path " + basePath + sourcePath)
-  if (path.exists(basePath + sourcePath)):
-    return
-  else:
+  if not (path.exists(basePath + sourcePath)):
     logger.info(" [+] Exiting because source path doesn't exist, is the file system mounted?")
     exit()
 
@@ -145,6 +143,7 @@ def resolve_callback(sdRef, flags, interfaceIndex, errorCode, fullname,
                      hosttarget, port, txtRecord):
   if errorCode == pybonjour.kDNSServiceErr_NoError:
       hosts.append(hosttarget)
+      print hosttarget, txtRecord, fullname, interfaceIndex, flags, errorCode
       resolved.append(True)
 
 
@@ -176,8 +175,8 @@ def browse_callback(sdRef, flags, interfaceIndex, errorCode, serviceName,
         logger.critical( 'Resolve timed out')
         break
       pybonjour.DNSServiceProcessResult(resolve_sdRef)
-      else:
-        resolved.pop()
+    else:
+      resolved.pop()
   finally:
     resolve_sdRef.close()
 
@@ -199,6 +198,11 @@ finally:
 # currently this script is unable to handle multiple AMQP servers and so we
 # bail out
 if len(hosts) > 1:
+   logger.debug(' [*] hosts found %i' % len(hosts))
+   logger.debug(' [*] found AMQP host %s' % hosts[0])
+   logger.debug(' [*] found AMQP host %s' % hosts[1])
+   logger.debug(' [*] found AMQP host %s' % hosts[2])
+
    logger.critical('found too many AMQP (RabbitMQ) hosts, unable to cope!')
    exit()
 

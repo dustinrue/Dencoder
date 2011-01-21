@@ -72,9 +72,8 @@ outfile.write('%i' % getpid())
 outfile.close
 
 def checkPaths():
-  logger.debug("checking path " + basePath + sourcePath)
   if not (path.exists(basePath + sourcePath)):
-    logger.info(" [+] Exiting because source path doesn't exist, is the file system mounted?")
+    logger.info(" [+] Exiting because source path (%s) doesn't exist, is the file system mounted?" % (basePath + sourcePath,))
     exit()
 
 def dencoderSetup():
@@ -143,7 +142,6 @@ def resolve_callback(sdRef, flags, interfaceIndex, errorCode, fullname,
                      hosttarget, port, txtRecord):
   if errorCode == pybonjour.kDNSServiceErr_NoError:
       hosts.append(hosttarget)
-      print hosttarget, txtRecord, fullname, interfaceIndex, flags, errorCode
       resolved.append(True)
 
 
@@ -196,19 +194,17 @@ finally:
 
 
 # currently this script is unable to handle multiple AMQP servers and so we
-# bail out
+# attempt to deal with it, and bail if we can't
 if len(hosts) > 1:
-   logger.debug(' [*] hosts found %i' % len(hosts))
-   logger.debug(' [*] found AMQP host %s' % hosts[0])
-   logger.debug(' [*] found AMQP host %s' % hosts[1])
-   logger.debug(' [*] found AMQP host %s' % hosts[2])
-
-   logger.critical('found too many AMQP (RabbitMQ) hosts, unable to cope!')
-   exit()
-
-
-
-RabbitMQServer = hosts[0]
+  # lets see if we're seeing multiple records for the same host
+  if len(hosts) == hosts.count(hosts[0]):
+    logger.debug(' [*] found multiple hosts but they are all the same')
+    RabbitMQServer = hosts[0]
+  else:
+    logger.critical('found too many AMQP (RabbitMQ) hosts, unable to cope!')
+    exit()
+else:
+  RabbitMQServer = hosts[0]
   
 # ensure that configured paths exist.  If they don't, HandBrakeCLI will
 # immediately fail but as the script is currently written it'll still

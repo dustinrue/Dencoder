@@ -144,6 +144,7 @@ def resolve_callback(sdRef, flags, interfaceIndex, errorCode, fullname,
   if errorCode == pybonjour.kDNSServiceErr_NoError:
     hosts.append(hosttarget)
     resolved.append(True)
+  logger.debug(' [*] leaving resolve_callback')
 
 
 def browse_callback(sdRef, flags, interfaceIndex, errorCode, serviceName,
@@ -186,8 +187,10 @@ browse_sdRef = pybonjour.DNSServiceBrowse(regtype = regtype,
                                           callBack = browse_callback)
 
 try:
-  for i in range(10):
+  while not hosts:
+    logger.debug(' [*] doing bonjour resolve')
     ready = select.select([browse_sdRef], [], [])
+    logger.debug(' [*] return from ready')
     if browse_sdRef in ready[0]:
       pybonjour.DNSServiceProcessResult(browse_sdRef)
 except:

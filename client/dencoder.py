@@ -13,10 +13,13 @@ from grp import getgrnam
 from sys import stdin, stdout, stderr
 import pybonjour
 import select
-
+import sys
 
 config = ConfigParser.RawConfigParser()
-config.read('/usr/local/etc/dencoder/dencoder.cfg')
+if sys.platform == "darwin":
+  config.read('/usr/local/etc/dencoder/dencoder.cfg')
+else:
+  config.read('/etc/dencoder/dencoder.cfg')
 
 # get config options
 hbpath         = config.get('Dencoder','hbpath')

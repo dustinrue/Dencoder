@@ -140,15 +140,21 @@ def handleSigTerm(thing1,thing2):
 
 def resolve_callback(sdRef, flags, interfaceIndex, errorCode, fullname,
                      hosttarget, port, txtRecord):
+  logger.debug(' [*] in resolve_callback')
   if errorCode == pybonjour.kDNSServiceErr_NoError:
-      hosts.append(hosttarget)
-      resolved.append(True)
+    hosts.append(hosttarget)
+    resolved.append(True)
+  else:
+    logger.debug(' [*] resolve_callback resulted in error')
 
 
 def browse_callback(sdRef, flags, interfaceIndex, errorCode, serviceName,
                     regtype, replyDomain):
+  logger.info(' [*] attempting bonjour lookup')
   if errorCode != pybonjour.kDNSServiceErr_NoError:
-      return
+    return
+  else:
+    logger.debug(' [*] browse_callback resulted in error')
 
   if not (flags & pybonjour.kDNSServiceFlagsAdd):
     # needs testing but this should happen when the RabbitMQ server is 
@@ -179,7 +185,7 @@ def browse_callback(sdRef, flags, interfaceIndex, errorCode, serviceName,
     resolve_sdRef.close()
 
 
-# attempt to find the RabbitMQ server using bonjour
+
 browse_sdRef = pybonjour.DNSServiceBrowse(regtype = regtype,
                                           callBack = browse_callback)
 
@@ -187,13 +193,13 @@ try:
   ready = select.select([browse_sdRef], [], [])
   if browse_sdRef in ready[0]:
     pybonjour.DNSServiceProcessResult(browse_sdRef)
-except KeyboardInterrupt:
-  pass
+except:
+  logger.debug(' [*] unknown error while attemping to resolve AMQP host')
 finally:
   browse_sdRef.close()
 
 
-# currently this script is unable to handle multiple AMQP servers and so we
+# if this script is unable to handle multiple AMQP servers and so we
 # attempt to deal with it, and bail if we can't
 if len(hosts) > 1:
   # lets see if we're seeing multiple records for the same host
@@ -203,8 +209,11 @@ if len(hosts) > 1:
   else:
     logger.critical('found too many AMQP (RabbitMQ) hosts, unable to cope!')
     exit()
-else:
+elif len(hosts) == 1:
   RabbitMQServer = hosts[0]
+else:
+  logger.critical(' [*] couldn\'t resolve any AMQP hosts')
+  exit()
   
 # ensure that configured paths exist.  If they don't, HandBrakeCLI will
 # immediately fail but as the script is currently written it'll still

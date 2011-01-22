@@ -144,8 +144,6 @@ def resolve_callback(sdRef, flags, interfaceIndex, errorCode, fullname,
   if errorCode == pybonjour.kDNSServiceErr_NoError:
     hosts.append(hosttarget)
     resolved.append(True)
-  else:
-    logger.debug(' [*] resolve_callback resulted in error')
 
 
 def browse_callback(sdRef, flags, interfaceIndex, errorCode, serviceName,
@@ -153,8 +151,6 @@ def browse_callback(sdRef, flags, interfaceIndex, errorCode, serviceName,
   logger.info(' [*] attempting bonjour lookup')
   if errorCode != pybonjour.kDNSServiceErr_NoError:
     return
-  else:
-    logger.debug(' [*] browse_callback resulted in error')
 
   if not (flags & pybonjour.kDNSServiceFlagsAdd):
     # needs testing but this should happen when the RabbitMQ server is 
@@ -190,9 +186,10 @@ browse_sdRef = pybonjour.DNSServiceBrowse(regtype = regtype,
                                           callBack = browse_callback)
 
 try:
-  ready = select.select([browse_sdRef], [], [])
-  if browse_sdRef in ready[0]:
-    pybonjour.DNSServiceProcessResult(browse_sdRef)
+  for i in range(10):
+    ready = select.select([browse_sdRef], [], [])
+    if browse_sdRef in ready[0]:
+      pybonjour.DNSServiceProcessResult(browse_sdRef)
 except:
   logger.debug(' [*] unknown error while attemping to resolve AMQP host')
 finally:
@@ -256,3 +253,4 @@ logger.info(' [+] Waiting for encode jobs. Issue kill to %i to end' % (getpid(),
 dencoderSetup()
 
 pika.asyncore_loop()
+  

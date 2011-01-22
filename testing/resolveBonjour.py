@@ -55,6 +55,7 @@ browse_sdRef = pybonjour.DNSServiceBrowse(regtype = regtype,
 try:
     try:
         while True:
+            print ' hey!'
             ready = select.select([browse_sdRef], [], [])
             if browse_sdRef in ready[0]:
                 pybonjour.DNSServiceProcessResult(browse_sdRef)

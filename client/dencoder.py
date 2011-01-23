@@ -1,4 +1,27 @@
 #!/usr/bin/env python
+
+#  This file is part of Dencoder.
+#
+#  Dencoder is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  Dencoder is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with Dencoder.  If not, see <http://www.gnu.org/licenses/>.
+
+
+# various bits of this script are copyright 2011 Dustin Rue <ruedu@dustinrue.com>
+# other bits of this script come from the following sources
+
+# pybonjour - http://code.google.com/p/pybonjour/
+# python documentation - http://docs.python.org/
+
 import subprocess
 import signal
 import pika
@@ -16,6 +39,12 @@ import select
 import sys
 
 config = ConfigParser.RawConfigParser()
+
+# The OS X installer packages install to /usr/local
+# but on Linux systems it's customary to install packages
+# to the "normal" bin location in /usr.  
+# To support this I need to place the config file in a 
+# different location depending on the OS in question
 if sys.platform == "darwin":
   config.read('/usr/local/etc/dencoder/dencoder.cfg')
 else:
@@ -60,13 +89,24 @@ def doFork():
 #  setuid(getpwnam(user).pw_uid)
   chdir('/')
 
+
+# launchd on OS X seems to handles placing things in the background.
+# The default config for OS X prevents this script from running in the
+# the background.  On Linux systems this value should be set to true.
+
 if (background != "false"):
   doFork()
 
 
 
 # setup the logger
-logging.config.fileConfig("/usr/local/etc/dencoder/logger.conf")
+# just like before, we need to load the correct logging
+# config file
+if sys.platform == "darwin":
+  logging.config.fileConfig("/usr/local/etc/dencoder/logger.conf")
+else:
+  logging.config.fileConfig("/etc/dencoder/logger.conf")
+
 logger = logging.getLogger('dencoder')
 logger.info(' [+] starting up')
 
@@ -239,7 +279,7 @@ except:
   exit()
 
 
-# declare a queue named encode jobs in case it hasn't already
+# declare a queue named encodejobs in case it hasn't already
 # been declared.  The server will places messages here.
 channel.queue_declare(queue='encodejobs')
 

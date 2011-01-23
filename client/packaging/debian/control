@@ -1,5 +1,5 @@
 Package: dencoder-client
-Version: 1.0.0-1
+Version: 0.3.0-ubuntu1
 Section: video
 Depends: python (>= 2.6.0), python-pip
 Architecture: all

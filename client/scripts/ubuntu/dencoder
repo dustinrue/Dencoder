@@ -19,7 +19,8 @@ case "$1" in
     start-stop-daemon --start --quiet --pidfile /var/run/dnsmasq/$NAME.pid --exec $DAEMON > /dev/null || return 1
     ;;
   stop)
-    pkill -TERM dencoder.py || true
+    kill -TERM `cat /var/run/$NAME.pid` || true
+    rm -f /var/run/$NAME.pid
     ;;
   restart|force-reload)
     $0 stop
@@ -29,8 +30,7 @@ case "$1" in
     status_of_proc "dencoder.py" "dencoder.py" && exit 0 || exit $?
     ;;
   *)
-    # echo "Usage: $N {start|stop|restart|reload|force-reload|status}" >&2
-    echo "Usage: $N {start|stop|restart|force-reload|status}" >&2
+    echo "Usage: $N {start|stop|restart|status}" >&2
     exit 1
     ;;
 esac

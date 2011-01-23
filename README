@@ -3,3 +3,24 @@ Dencoder is a collection of tools that allow HandBrakeCLI to work from a network
 RabbitMQ is used as the queue handler though technically any AMQP implementation would work.  More information about how the project works is coming.
 
 See wiki for link to installation instructions - https://github.com/dustinrue/Dencoder/wiki
+
+
+
+
+
+
+------
+This file is part of Dencoder.
+
+Dencoder is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+Dencoder is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with Dencoder.  If not, see <http://www.gnu.org/licenses/>.

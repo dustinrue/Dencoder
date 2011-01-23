@@ -56,8 +56,8 @@ def doFork():
   dup2(se.fileno(),stderr.fileno())
 
   # drop privs
-  setgid(getgrnam(group).gr_gid)
-  setuid(getpwnam(user).pw_uid)
+#  setgid(getgrnam(group).gr_gid)
+#  setuid(getpwnam(user).pw_uid)
   chdir('/')
 
 if (background != "false"):
@@ -70,7 +70,7 @@ logging.config.fileConfig("/usr/local/etc/dencoder/logger.conf")
 logger = logging.getLogger('dencoder')
 logger.info(' [+] starting up')
 
-outfile = open('/tmp/encoder.py.pid','w',0)
+outfile = open('/var/run/dencoder.py.pid','w',0)
 outfile.write('%i' % getpid())
 outfile.close
 

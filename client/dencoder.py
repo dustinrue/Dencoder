@@ -299,4 +299,4 @@ logger.info(' [+] Waiting for encode jobs. Issue kill to %i to end' % (getpid(),
 dencoderSetup()
 
 pika.asyncore_loop()
-  
+

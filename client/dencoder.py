@@ -22,8 +22,6 @@
 # pybonjour - http://code.google.com/p/pybonjour/
 # python documentation - http://docs.python.org/
 
-# version 0.3.0
-
 import subprocess
 import signal
 import pika
@@ -56,7 +54,6 @@ else:
 hbpath         = config.get('Dencoder','hbpath')
 hblog          = config.get('Dencoder','hblog')
 hberr          = config.get('Dencoder','hberr')
-#RabbitMQServer = config.get('Dencoder','RabbitMQServer')
 basePath       = config.get('Dencoder','basePath') 
 sourcePath     = config.get('Dencoder','sourcePath')
 destPath       = config.get('Dencoder','destPath')
@@ -92,7 +89,7 @@ def doFork():
   chdir('/')
 
 
-# launchd on OS X seems to handles placing things in the background.
+# launchd on OS X seems to handle placing things in the background.
 # The default config for OS X prevents this script from running in the
 # the background.  On Linux systems this value should be set to true.
 
@@ -100,26 +97,25 @@ if (background != "false"):
   doFork()
 
 
+def setupLogging():
+  # setup the logger
+  # just like before, we need to load the correct logging
+  # config file
+  if sys.platform == "darwin":
+    logging.config.fileConfig("/usr/local/etc/dencoder/logger.conf")
+  else:
+    logging.config.fileConfig("/etc/dencoder/logger.conf")
 
-# setup the logger
-# just like before, we need to load the correct logging
-# config file
-if sys.platform == "darwin":
-  logging.config.fileConfig("/usr/local/etc/dencoder/logger.conf")
-else:
-  logging.config.fileConfig("/etc/dencoder/logger.conf")
+  return logging.getLogger('dencoder')
 
-logger = logging.getLogger('dencoder')
-logger.info(' [+] starting up')
 
-outfile = open('/var/run/dencoder.py.pid','w',0)
-outfile.write('%i' % getpid())
-outfile.close
+def writePid():
+  outfile = open('/var/run/dencoder.py.pid','w',0)
+  outfile.write('%i' % getpid())
+  outfile.close
 
 def checkPaths():
-  if not (path.exists(basePath + sourcePath)):
-    logger.info(" [+] Exiting because source path (%s) doesn't exist, is the file system mounted?" % (basePath + sourcePath,))
-    exit()
+  return (path.exists(basePath + sourcePath))
 
 def dencoderSetup():
   global hbpid
@@ -228,77 +224,116 @@ def browse_callback(sdRef, flags, interfaceIndex, errorCode, serviceName,
 
 
 
-browse_sdRef = pybonjour.DNSServiceBrowse(regtype = regtype,
-                                          callBack = browse_callback)
 
-try:
-  while not hosts:
-    logger.debug(' [*] doing bonjour resolve')
-    ready = select.select([browse_sdRef], [], [])
-    logger.debug(' [*] return from ready')
-    if browse_sdRef in ready[0]:
-      pybonjour.DNSServiceProcessResult(browse_sdRef)
-except:
-  logger.debug(' [*] unknown error while attemping to resolve AMQP host')
-finally:
-  browse_sdRef.close()
+def findAMQHost():
+  browse_sdRef = pybonjour.DNSServiceBrowse(regtype = regtype,
+                                            callBack = browse_callback)
+  try:
+    while not hosts:
+      logger.debug(' [*] doing bonjour resolve')
+      ready = select.select([browse_sdRef], [], [])
+      logger.debug(' [*] return from ready')
+      if browse_sdRef in ready[0]:
+        pybonjour.DNSServiceProcessResult(browse_sdRef)
+  except:
+    logger.debug(' [*] unknown error while attemping to resolve AMQP host')
+  finally:
+    browse_sdRef.close()
 
 
-# if this script is unable to handle multiple AMQP servers and so we
-# attempt to deal with it, and bail if we can't
-if len(hosts) > 1:
-  # lets see if we're seeing multiple records for the same host
-  if len(hosts) == hosts.count(hosts[0]):
-    logger.debug(' [*] found multiple hosts but they are all the same')
-    RabbitMQServer = hosts[0]
-  else:
-    logger.critical('found too many AMQP (RabbitMQ) hosts, unable to cope!')
-    exit()
-elif len(hosts) == 1:
-  RabbitMQServer = hosts[0]
-else:
-  logger.critical(' [*] couldn\'t resolve any AMQP hosts')
-  exit()
-  
-# ensure that configured paths exist.  If they don't, HandBrakeCLI will
-# immediately fail but as the script is currently written it'll still
-# ack the message.  This ack tells RabbitMQ the encode was successful, 
-# even though it wasn't
-checkPaths()
+
+
+
+def declareAMQPQueue():
+  # declare a queue named encodejobs in case it hasn't already
+  # been declared.  The server will places messages here.
+  channel.queue_declare(queue='encodejobs')
+
+  # prefetch_count=1 causes this client to just get 1
+  # message from the queue.  By doing this any new client
+  # that connects to the message bus will be able to get
+  # any messages left in the queue instead of only new ones
+  # that were added after an existing client connected.  
+  # This is important so that you can scale up your encode
+  # cluster on the fly
+  channel.basic_qos(prefetch_count=1)
+  channel.basic_consume(dojob_callback,
+                        queue='encodejobs')
+
+def waitAndSee():
+  logger.info(' [+] sleeping for 20 seconds')
+  time.sleep(20)
+
 
 # be ready to handle a SIGTERM
 signal.signal(signal.SIGTERM,handleSigTerm)
 
-logger.info(' [+] connecting to RabbitMQ @%s' %(RabbitMQServer,))
-try:
-  connection = pika.AsyncoreConnection(pika.ConnectionParameters(host=RabbitMQServer))
-  global channel
-  channel = connection.channel()
-  logger.info(' [+] connected')
-except:
-  logger.info(' [+] failed to connect to RabbitMQ!')
-  logger.info(' [+] unable to cope, shutting down.  Please check RabbitMQ host and configuration')
-  exit()
+# start logging
+logger = setupLogging()
+logger.info(' [+] dencoder is starting, please standby')
 
 
-# declare a queue named encodejobs in case it hasn't already
-# been declared.  The server will places messages here.
-channel.queue_declare(queue='encodejobs')
+# this is the big loop
+while True:
+  dencoderSetup()
+  # check to see if paths exist
+  # ensure that configured paths exist.  If they don't, HandBrakeCLI will
+  # immediately fail but as the script is currently written it'll still
+  # ack the message.  This ack tells RabbitMQ the encode was successful, 
+  # even though it wasn't
+  if not checkPaths():
+    logger.critical(" [+] source path (%s) doesn't exist, is the file system mounted?" % (basePath + sourcePath,))
+    waitAndSee()
+    continue
+    
 
-# prefetch_count=1 causes this client to just get 1
-# message from the queue.  By doing this any new client
-# that connects to the message bus will be able to get
-# any messages left in the queue instead of only new ones
-# that were added after an existing client connected.  
-# This is important so that you can scale up your encode
-# cluster on the fly
-channel.basic_qos(prefetch_count=1)
-channel.basic_consume(dojob_callback,
-                      queue='encodejobs')
-logger.debug(' [+] entering pika.asyncore_loop')
-logger.info(' [+] Waiting for encode jobs. Issue kill to %i to end' % (getpid(),))
+  findAMQHost()
 
-dencoderSetup()
+  # by now hosts is magically set, I haven't taken the time yet to 
+  # learn how about variable scope in python so I find it amazing
+  # that hosts is now set, one day soon I'll learn how that works
 
-pika.asyncore_loop()
+
+  # if this script is unable to handle multiple AMQP servers and so we
+  # attempt to deal with it, and bail if we can't
+  if len(hosts) > 1:
+    # lets see if we're seeing multiple records for the same host
+    if len(hosts) == hosts.count(hosts[0]):
+      logger.debug(' [*] found multiple hosts but they are all the same')
+      RabbitMQServer = hosts[0]
+    else:
+      logger.critical('found too many AMQP (RabbitMQ) hosts, unable to cope!')
+      waitAndSee()
+      continue
+  elif len(hosts) == 1:
+    RabbitMQServer = hosts[0]
+  else:
+    logger.critical(' [*] couldn\'t resolve any AMQP hosts')
+    waitAndSee()
+    continue
+    
+
+
+  logger.info(' [+] connecting to RabbitMQ @%s' %(RabbitMQServer,))
+  try:
+    connection = pika.AsyncoreConnection(pika.ConnectionParameters(host=RabbitMQServer))
+    global channel
+    channel = connection.channel()
+    logger.info(' [+] connected')
+  except:
+    logger.critical(' [+] failed to connect to RabbitMQ!')
+    logger.critical(' [+] Please check RabbitMQ host and configuration')
+    waitAndSee()
+    continue
+
+
+
+
+
+  logger.debug(' [+] entering pika.asyncore_loop')
+  logger.info(' [+] Waiting for encode jobs. Issue kill to %i to end' % (getpid(),))
+
+
+  declareAMQPQueue()
+  pika.asyncore_loop()
 

@@ -22,6 +22,8 @@
 # pybonjour - http://code.google.com/p/pybonjour/
 # python documentation - http://docs.python.org/
 
+# version 0.3.0
+
 import subprocess
 import signal
 import pika

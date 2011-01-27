@@ -30,13 +30,16 @@ import ConfigParser
 import logging
 import logging.config
 from simplejson import loads
-from os import fork, setsid, umask, dup2, getpid, chdir, setuid, setgid, kill, path
+from os import fork, setsid, umask, dup2, getpid, chdir, setuid, setgid, kill, path, uname
 from pwd import getpwnam
 from grp import getgrnam
 from sys import stdin, stdout, stderr
 import pybonjour
 import select
 import sys
+import Growl
+import socket
+import re
 
 config = ConfigParser.RawConfigParser()
 
@@ -60,10 +63,13 @@ destPath       = config.get('Dencoder','destPath')
 user           = config.get('Dencoder','user')
 group          = config.get('Dencoder','group')
 background     = config.get('Dencoder','background')
+enableGrowl    = config.get('Dencoder','enableGrowl')
 bjTimeout      = int(config.get('Dencoder','bjTimeout'))
 regtype        = '_amqp._tcp'
 resolved       = []
-hosts          = []
+
+if enableGrowl:
+  growlPassword = config.get('Dencoder','growlPassword')
 
 
 def doFork():
@@ -84,8 +90,8 @@ def doFork():
   dup2(se.fileno(),stderr.fileno())
 
   # drop privs
-#  setgid(getgrnam(group).gr_gid)
-#  setuid(getpwnam(user).pw_uid)
+  setgid(getgrnam(group).gr_gid)
+  setuid(getpwnam(user).pw_uid)
   chdir('/')
 
 
@@ -127,10 +133,22 @@ def encodeVideo(filename,outfile,preset):
   logger.info(" [-] encoding " + filename + " using " + preset)
   args = [hbpath,'-Z',preset,'-i',basePath+sourcePath+filename,'-o',basePath+destPath+outfile,'--main-feature']
   p = subprocess.Popen(args,stdout=open(hblog, 'w'),stderr=open(hberr,'w'))
+
   hbpid = p.pid
   logger.info(" [-] HandBrakeCLI started with pid %i" % (p.pid),)
-  p.wait()
-  return p
+  logger.debug('calling wait()')
+  #hbStatus = p.wait()
+  logger.debug('returned from wait()')
+  return 1
+
+def ackAMQPMessage(ch,method):
+  # ackknowledge that the message was received.  Here we're telling 
+  # the message queue that we're done with the job.  Future versions
+  # of this client should be able to kill an encode and NOT ack the message.
+  # This way other clients can take over and do the encode in the event that
+  # another client failed to encode the file for whatever reason.
+  logger.debug(" [-] sending message ack")
+  ch.basic_ack(delivery_tag = method.delivery_tag)
 
 def dojob_callback(ch, method, header, body):
   global hbpid
@@ -141,25 +159,25 @@ def dojob_callback(ch, method, header, body):
     preset   = json['preset']
   except:
     logger.info(' [+] recieved an invalid request, ignoring but ack\'ing the message to remove from queue')
-    ch.basic_ack(delivery_tag = method.delivery_tag)
+    ackAMQPMessage(ch,method)
     return
   logger.debug(" [-] Received job with filename %r" % (filename,))
-  checkPaths()
-  process = encodeVideo(filename,outfile,preset)
-  logger.debug(" [-] sending message ack")
-
-  # ackknowledge that the message was received.  Here we're telling 
-  # the message queue that we're done with the job.  Future versions
-  # of this client should be able to kill an encode and NOT ack the message.
-  # This way other clients can take over and do the encode in the event that
-  # another client failed to encode the file for whatever reason.
-  ch.basic_ack(delivery_tag = method.delivery_tag)
+  if not checkPaths():
+    logger.critical(' [-] unable to read the source file (%s), check paths' % filename)
+    return
+  hbStatus = encodeVideo(filename,outfile,preset)
+  if not (hbStatus):
+    logger.debug(' [-] handbrake didn\'t exit cleanly, not acking message')
+    
+    # FIX ME: not acking the message prevents client from getting another one
+    ackAMQPMessage(ch,method)
+  else:
+    ackAMQPMessage(ch,method)
   logger.info(" [-] Done")
   hbpid = 0
   logger.info (' [+] Waiting for encode jobs. Issue kill to %i to end' % (getpid(),))
 
 def stopEncodes():
-  global hbpid
   if (hbpid > 0):
     logger.debug(' [+] killing HandiBrakeCLI at pid %i' % (hbpid,))
     kill(hbpid,signal.SIGTERM)
@@ -167,8 +185,9 @@ def stopEncodes():
 def disconnectRabbitMQ():
   global channel
   channel.close()
-
-def handleSigTerm(thing1,thing2):
+  
+def shutdownDencoder():
+  gNotify(growl,'Dencoder on %s is shutting down' % (hostname(),) )
   logger.info(' [+] SIGTERM received')
   logger.info(' [+] shutting down...')
   logger.info(' [+] terminating any running encodes...')
@@ -176,6 +195,9 @@ def handleSigTerm(thing1,thing2):
   stopEncodes()
   logger.info(' [+] good bye')
   exit()
+
+def handleSigTerm(thing1,thing2):
+  shutdownDencoder()
 
 
 
@@ -226,6 +248,7 @@ def browse_callback(sdRef, flags, interfaceIndex, errorCode, serviceName,
 
 
 def findAMQHost():
+
   browse_sdRef = pybonjour.DNSServiceBrowse(regtype = regtype,
                                             callBack = browse_callback)
   try:
@@ -239,7 +262,25 @@ def findAMQHost():
     logger.debug(' [*] unknown error while attemping to resolve AMQP host')
   finally:
     browse_sdRef.close()
+  
+  
+  # if this script is unable to handle multiple AMQP servers and so we
+  # attempt to deal with it, and bail if we can't
+  if len(hosts) > 1:
+    # lets see if we're seeing multiple records for the same host
+    if len(hosts) == hosts.count(hosts[0]):
+      logger.debug(' [*] found multiple hosts but they are all the same')
+      RabbitMQServer = hosts[0]
+    else:
+      logger.critical('found too many AMQP (RabbitMQ) hosts, unable to cope!')
+      return 0
+  elif len(hosts) == 1:
+    RabbitMQServer = hosts[0]
+  else:
+    logger.critical(' [*] couldn\'t resolve any AMQP hosts')
+    return 0
 
+  return RabbitMQServer
 
 
 
@@ -263,10 +304,30 @@ def declareAMQPQueue():
 def waitAndSee():
   logger.info(' [+] sleeping for 20 seconds')
   time.sleep(20)
+  
+def initGrowlNotifier(useGrowl, hostname = None,password = None):
+  if hostname is not None and password is not None:
+    growl = Growl.GrowlNotifier('Dencoder',['message'],[],'',hostname,password)
+    growl.register()
+  else:
+    growl = Growl.GrowlNotifier('Dencoder',['message'])
+    growl.register()
+    
+  return growl
 
+def hostname():
+  return re.sub(r'\..*', '', uname()[1])
+  
+def gNotify(growl,message):
+  if bool(enableGrowl) is not True:
+    return
+  for g in growl:
+    g.notify('message','Dencoder',message)
 
-# be ready to handle a SIGTERM
+# be ready to handle a SIGTERM and SIGINT
 signal.signal(signal.SIGTERM,handleSigTerm)
+signal.signal(signal.SIGINT,handleSigTerm)
+
 
 # start logging
 logger = setupLogging()
@@ -274,7 +335,17 @@ logger.info(' [+] dencoder is starting, please standby')
 
 
 # this is the big loop
+wasConnected = False
 while True:
+  hosts = []
+  growl = []
+  
+  
+  if wasConnected is True:
+    wasConnected = false
+    gNotify(growl,"Connection to AMQP server lost on %s" % (hostname(),))
+  
+  writePid()
   dencoderSetup()
   # check to see if paths exist
   # ensure that configured paths exist.  If they don't, HandBrakeCLI will
@@ -283,41 +354,26 @@ while True:
   # even though it wasn't
   if not checkPaths():
     logger.critical(" [+] source path (%s) doesn't exist, is the file system mounted?" % (basePath + sourcePath,))
+    # on OS X we can cause dencoder.py to run when a file system is mounted,
+    # should an option exist here to check for darwin and then exit now
+    # if darwin is detected knowing that dencoder.py will simply restart
+    # when a new FS is mounted?
     waitAndSee()
     continue
     
 
-  findAMQHost()
-
-  # by now hosts is magically set, I haven't taken the time yet to 
-  # learn how about variable scope in python so I find it amazing
-  # that hosts is now set, one day soon I'll learn how that works
-
-
-  # if this script is unable to handle multiple AMQP servers and so we
-  # attempt to deal with it, and bail if we can't
-  if len(hosts) > 1:
-    # lets see if we're seeing multiple records for the same host
-    if len(hosts) == hosts.count(hosts[0]):
-      logger.debug(' [*] found multiple hosts but they are all the same')
-      RabbitMQServer = hosts[0]
-    else:
-      logger.critical('found too many AMQP (RabbitMQ) hosts, unable to cope!')
-      waitAndSee()
-      continue
-  elif len(hosts) == 1:
-    RabbitMQServer = hosts[0]
-  else:
-    logger.critical(' [*] couldn\'t resolve any AMQP hosts')
+  RabbitMQServer = findAMQHost()
+  if not RabbitMQServer:
     waitAndSee()
     continue
-    
 
+  growl.append(initGrowlNotifier(enableGrowl,RabbitMQServer,growlPassword))
+  growl.append(initGrowlNotifier(enableGrowl))
+  
 
   logger.info(' [+] connecting to RabbitMQ @%s' %(RabbitMQServer,))
   try:
     connection = pika.AsyncoreConnection(pika.ConnectionParameters(host=RabbitMQServer))
-    global channel
     channel = connection.channel()
     logger.info(' [+] connected')
   except:
@@ -335,5 +391,8 @@ while True:
 
 
   declareAMQPQueue()
+  gNotify(growl,'Dencoder on %s is now available for encoding jobs' % (hostname(),))
+  wasConnected = True
   pika.asyncore_loop()
+
 

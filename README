@@ -1,6 +1,10 @@
-Dencoder is a collection of tools that allow HandBrakeCLI to work from a network based queue.  Multiple HandBrakeCLI instances can run across any number of computers (Mac's at this time) in order to speed up the process.
+What Dencoder Is
 
-RabbitMQ is used as the queue handler though technically any AMQP implementation would work.  More information about how the project works is coming.
+Dencoder is a shared job queue that any number of clients can work from, a sort of distributed encoder. Clients take jobs from the queue and then start HandBrakeCLI with the parameters given. There is no limit to the number of clients that can be used. If you have five clients and five movies to encode then the five computers will work in parallel rather than one at a time. Given equally powerful clients the encoding work will be done in about 1/5th the time of using just one.
+
+What Dencoder Is Not
+
+Dencoder isn't able to take a single job and split it up between a number of computers. Dencoder doesn't aim to be that. It aims to provide a simple way to have a number of clients working from a shared job queue. 
 
 See wiki for link to installation instructions - https://github.com/dustinrue/Dencoder/wiki
 

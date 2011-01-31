@@ -37,7 +37,6 @@ from sys import stdin, stdout, stderr
 import pybonjour
 import select
 import sys
-import Growl
 import socket
 import re
 
@@ -68,7 +67,9 @@ bjTimeout      = int(config.get('Dencoder','bjTimeout'))
 regtype        = '_amqp._tcp'
 resolved       = []
 
-if enableGrowl:
+
+if enableGrowl == "True":
+  import Growl
   growlPassword = config.get('Dencoder','growlPassword')
 
 
@@ -90,8 +91,8 @@ def doFork():
   dup2(se.fileno(),stderr.fileno())
 
   # drop privs
-  setgid(getgrnam(group).gr_gid)
-  setuid(getpwnam(user).pw_uid)
+  # setgid(getgrnam(group).gr_gid)
+  # setuid(getpwnam(user).pw_uid)
   chdir('/')
 
 
@@ -99,7 +100,7 @@ def doFork():
 # The default config for OS X prevents this script from running in the
 # the background.  On Linux systems this value should be set to true.
 
-if (background != "false"):
+if background == "True":
   doFork()
 
 
@@ -116,14 +117,22 @@ def setupLogging():
 
 
 def writePid():
-  outfile = open('/var/run/dencoder.py.pid','w',0)
-  outfile.write('%i' % getpid())
-  outfile.close
+  logger.debug(' [*] writing pid file')
+  try:
+    outfile = open('/var/run/dencoder.py.pid','w',0)
+    outfile.write('%i' % getpid())
+    outfile.close
+    logger.debug(' [*] successfully wrote pid file')
+  except:
+    logger.critical(' [*] failed to write the pid file, is dencoder client already running?')
+    shutdownDencoder()
 
 def checkPaths():
+  logger.debug(' [*] checking paths')
   return (path.exists(basePath + sourcePath))
 
 def dencoderSetup():
+  logger.debug(' [*] in dencoderSetup')
   global hbpid
   hbpid = 0
 
@@ -137,9 +146,9 @@ def encodeVideo(filename,outfile,preset):
   hbpid = p.pid
   logger.info(" [-] HandBrakeCLI started with pid %i" % (p.pid),)
   logger.debug('calling wait()')
-  #hbStatus = p.wait()
+  hbStatus = p.wait()
   logger.debug('returned from wait()')
-  return 1
+  return hbStatus
 
 def ackAMQPMessage(ch,method):
   # ackknowledge that the message was received.  Here we're telling 
@@ -286,6 +295,7 @@ def findAMQHost():
 
 
 def declareAMQPQueue():
+  logging.debug(' [*] in declareAMQPQueue')
   # declare a queue named encodejobs in case it hasn't already
   # been declared.  The server will places messages here.
   channel.queue_declare(queue='encodejobs')
@@ -306,7 +316,11 @@ def waitAndSee():
   time.sleep(20)
   
 def initGrowlNotifier(useGrowl, hostname = None,password = None):
+  logger.debug(' [*] initGrowlNotifier called with %s, %s, %s' % (useGrowl,hostname,password,))
+  if useGrowl == "False":
+    return
   if hostname is not None and password is not None:
+    
     growl = Growl.GrowlNotifier('Dencoder',['message'],[],'',hostname,password)
     growl.register()
   else:
@@ -319,10 +333,17 @@ def hostname():
   return re.sub(r'\..*', '', uname()[1])
   
 def gNotify(growl,message):
-  if bool(enableGrowl) is not True:
+  logger.debug(' [*] in gNotify')
+  
+  if enableGrowl == "False":
+    logger.debug(' [*] leaving gNotify because enableGrowl is false')
     return
+  
   for g in growl:
+    logger.debug(' [*] attempting to send Growl notification')
+    logger.debug(' [*] sending %s' % message)
     g.notify('message','Dencoder',message)
+  logger.debug(' [*] leaving gNotify')
 
 # be ready to handle a SIGTERM and SIGINT
 signal.signal(signal.SIGTERM,handleSigTerm)
@@ -339,11 +360,13 @@ wasConnected = False
 while True:
   hosts = []
   growl = []
-  
+ 
+
   
   if wasConnected is True:
-    wasConnected = false
+    wasConnected = False
     gNotify(growl,"Connection to AMQP server lost on %s" % (hostname(),))
+  
   
   writePid()
   dencoderSetup()
@@ -367,10 +390,13 @@ while True:
     waitAndSee()
     continue
 
-  growl.append(initGrowlNotifier(enableGrowl,RabbitMQServer,growlPassword))
-  growl.append(initGrowlNotifier(enableGrowl))
-  
 
+  try:
+    growl.append(initGrowlNotifier(enableGrowl,RabbitMQServer,growlPassword))
+    growl.append(initGrowlNotifier(enableGrowl))
+  except:
+    logger.debug(' [*] growl must be disabled, because we got here')
+    
   logger.info(' [+] connecting to RabbitMQ @%s' %(RabbitMQServer,))
   try:
     connection = pika.AsyncoreConnection(pika.ConnectionParameters(host=RabbitMQServer))

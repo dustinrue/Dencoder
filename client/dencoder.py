@@ -70,7 +70,10 @@ resolved       = []
 
 if enableGrowl == "True":
   import Growl
-  growlPassword = config.get('Dencoder','growlPassword')
+  
+  # the config file contains a string, convert it to a list
+  growlHosts = eval(config.get('Dencoder','growlHosts'))
+
 
 
 def doFork():
@@ -138,16 +141,17 @@ def dencoderSetup():
 
 def encodeVideo(filename,outfile,preset):
   global hbpid
-  logger.debug(" [-] params are %s %s %s" % (filename, outfile, preset,))
-  logger.info(" [-] encoding " + filename + " using " + preset)
+  logger.debug(" [*] params are %s %s %s" % (filename, outfile, preset,))
+  gNotify(growl,"dencoder on %s is encoding %s using %s" % (hostname(),filename,preset,))
+  logger.info(" [*] encoding " + filename + " using " + preset)
   args = [hbpath,'-Z',preset,'-i',basePath+sourcePath+filename,'-o',basePath+destPath+outfile,'--main-feature']
   p = subprocess.Popen(args,stdout=open(hblog, 'w'),stderr=open(hberr,'w'))
 
   hbpid = p.pid
-  logger.info(" [-] HandBrakeCLI started with pid %i" % (p.pid),)
-  logger.debug('calling wait()')
+  logger.info(" [*] HandBrakeCLI started with pid %i" % (p.pid),)
+ 
   hbStatus = p.wait()
-  logger.debug('returned from wait()')
+  gNotify(growl,"dencoder on %s has finished encoding %s using %s" % (hostname(),filename,preset,))
   return hbStatus
 
 def ackAMQPMessage(ch,method):
@@ -156,7 +160,7 @@ def ackAMQPMessage(ch,method):
   # of this client should be able to kill an encode and NOT ack the message.
   # This way other clients can take over and do the encode in the event that
   # another client failed to encode the file for whatever reason.
-  logger.debug(" [-] sending message ack")
+  logger.debug(" [*] sending message ack")
   ch.basic_ack(delivery_tag = method.delivery_tag)
 
 def dojob_callback(ch, method, header, body):
@@ -167,28 +171,29 @@ def dojob_callback(ch, method, header, body):
     outfile  = json['outputfile']
     preset   = json['preset']
   except:
-    logger.info(' [+] recieved an invalid request, ignoring but ack\'ing the message to remove from queue')
+    gNotify(growl,"dencoder on %s received an invalid message" % (hostname(),))
+    logger.info(' [*] recieved an invalid request, ignoring but ack\'ing the message to remove from queue')
     ackAMQPMessage(ch,method)
     return
-  logger.debug(" [-] Received job with filename %r" % (filename,))
+  logger.debug(" [*] Received job with filename %r" % (filename,))
   if not checkPaths():
-    logger.critical(' [-] unable to read the source file (%s), check paths' % filename)
+    logger.critical(' [*] unable to read the source file (%s), check paths' % filename)
     return
   hbStatus = encodeVideo(filename,outfile,preset)
   if not (hbStatus):
-    logger.debug(' [-] handbrake didn\'t exit cleanly, not acking message')
+    logger.debug(' [*] handbrake didn\'t exit cleanly, not acking message')
     
     # FIX ME: not acking the message prevents client from getting another one
     ackAMQPMessage(ch,method)
   else:
     ackAMQPMessage(ch,method)
-  logger.info(" [-] Done")
+  logger.info(" [*] Done")
   hbpid = 0
-  logger.info (' [+] Waiting for encode jobs. Issue kill to %i to end' % (getpid(),))
+  logger.info (' [*] Waiting for encode jobs. Issue kill to %i to end' % (getpid(),))
 
 def stopEncodes():
   if (hbpid > 0):
-    logger.debug(' [+] killing HandiBrakeCLI at pid %i' % (hbpid,))
+    logger.debug(' [*] killing HandiBrakeCLI at pid %i' % (hbpid,))
     kill(hbpid,signal.SIGTERM)
 
 def disconnectRabbitMQ():
@@ -197,12 +202,12 @@ def disconnectRabbitMQ():
   
 def shutdownDencoder():
   gNotify(growl,'Dencoder on %s is shutting down' % (hostname(),) )
-  logger.info(' [+] SIGTERM received')
-  logger.info(' [+] shutting down...')
-  logger.info(' [+] terminating any running encodes...')
+  logger.info(' [*] SIGTERM received')
+  logger.info(' [*] shutting down...')
+  logger.info(' [*] terminating any running encodes...')
   disconnectRabbitMQ()
   stopEncodes()
-  logger.info(' [+] good bye')
+  logger.info(' [*] good bye')
   exit()
 
 def handleSigTerm(thing1,thing2):
@@ -228,11 +233,11 @@ def browse_callback(sdRef, flags, interfaceIndex, errorCode, serviceName,
   if not (flags & pybonjour.kDNSServiceFlagsAdd):
     # needs testing but this should happen when the RabbitMQ server is 
     # going away as advertised by Bonjour
-    logger.info( ' [+] RabbitMQ is going away')
+    logger.info( ' [*] RabbitMQ is going away')
     return
 
   # we get here when we've successfully queried for _amqp._tcp
-  logger.info(' [+] Found a RabbitMQ server, resolving')
+  logger.info(' [*] Found a RabbitMQ server, resolving')
 
   resolve_sdRef = pybonjour.DNSServiceResolve(0,
                                               interfaceIndex,
@@ -312,22 +317,34 @@ def declareAMQPQueue():
                         queue='encodejobs')
 
 def waitAndSee():
-  logger.info(' [+] sleeping for 20 seconds')
+  logger.info(' [*] sleeping for 20 seconds')
   time.sleep(20)
   
-def initGrowlNotifier(useGrowl, hostname = None,password = None):
-  logger.debug(' [*] initGrowlNotifier called with %s, %s, %s' % (useGrowl,hostname,password,))
-  if useGrowl == "False":
+def initGrowlNotifier():
+  listOfGrowlInstances = []
+ 
+  if enableGrowl == "False":
     return
-  if hostname is not None and password is not None:
+  
+
+  for host in growlHosts:
+    hostname = host[0]
+    password = host[1]
     
-    growl = Growl.GrowlNotifier('Dencoder',['message'],[],'',hostname,password)
-    growl.register()
-  else:
-    growl = Growl.GrowlNotifier('Dencoder',['message'])
-    growl.register()
     
-  return growl
+    if hostname is not None and hostname is not "localhost" and password is not None:
+      logger.debug(' [*] adding remote growl instance using using %s and %s' % (hostname,password,))
+      
+      tmp = Growl.GrowlNotifier('Dencoder',['message'],[],'',hostname,password)
+      tmp.register()
+      listOfGrowlInstances.append(tmp)
+    else:
+      logger.debug(' [*] adding local growl instance')
+      tmp = Growl.GrowlNotifier('Dencoder',['message'])
+      tmp.register()
+      listOfGrowlInstances.append(tmp)
+    
+  return listOfGrowlInstances
 
 def hostname():
   return re.sub(r'\..*', '', uname()[1])
@@ -352,7 +369,7 @@ signal.signal(signal.SIGINT,handleSigTerm)
 
 # start logging
 logger = setupLogging()
-logger.info(' [+] dencoder is starting, please standby')
+logger.info(' [*] dencoder is starting, please standby')
 
 
 # this is the big loop
@@ -376,7 +393,7 @@ while True:
   # ack the message.  This ack tells RabbitMQ the encode was successful, 
   # even though it wasn't
   if not checkPaths():
-    logger.critical(" [+] source path (%s) doesn't exist, is the file system mounted?" % (basePath + sourcePath,))
+    logger.critical(" [*] source path (%s) doesn't exist, is the file system mounted?" % (basePath + sourcePath,))
     # on OS X we can cause dencoder.py to run when a file system is mounted,
     # should an option exist here to check for darwin and then exit now
     # if darwin is detected knowing that dencoder.py will simply restart
@@ -392,19 +409,18 @@ while True:
 
 
   try:
-    growl.append(initGrowlNotifier(enableGrowl,RabbitMQServer,growlPassword))
-    growl.append(initGrowlNotifier(enableGrowl))
+    growl = initGrowlNotifier()
   except:
     logger.debug(' [*] growl must be disabled, because we got here')
     
-  logger.info(' [+] connecting to RabbitMQ @%s' %(RabbitMQServer,))
+  logger.info(' [*] connecting to RabbitMQ @%s' %(RabbitMQServer,))
   try:
     connection = pika.AsyncoreConnection(pika.ConnectionParameters(host=RabbitMQServer))
     channel = connection.channel()
-    logger.info(' [+] connected')
+    logger.info(' [*] connected')
   except:
-    logger.critical(' [+] failed to connect to RabbitMQ!')
-    logger.critical(' [+] Please check RabbitMQ host and configuration')
+    logger.critical(' [*] failed to connect to RabbitMQ!')
+    logger.critical(' [*] Please check RabbitMQ host and configuration')
     waitAndSee()
     continue
 
@@ -412,8 +428,8 @@ while True:
 
 
 
-  logger.debug(' [+] entering pika.asyncore_loop')
-  logger.info(' [+] Waiting for encode jobs. Issue kill to %i to end' % (getpid(),))
+  logger.debug(' [*] entering pika.asyncore_loop')
+  logger.info(' [*] Waiting for encode jobs. Issue kill to %i to end' % (getpid(),))
 
 
   declareAMQPQueue()

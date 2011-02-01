@@ -35,7 +35,7 @@ basename, extension = os.path.splitext(sourcefile)
 outputfile = basename + '.m4v'
 preset     = sys.argv[2]
 
-message = '{"sourcefile": "' + sourcefile + '",\
+message = '"sourcefile": "' + sourcefile + '",\
             "outputfile": "' + outputfile + '",\
             "preset": "' + preset + '"}'
 

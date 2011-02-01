@@ -15,10 +15,7 @@ rm -rf mp4v2-$VERSION
 rm -rf /tmp/mp4v2build
 tar jxvf mp4v2-$VERSION.tar.bz2
 cd mp4v2-$VERSION
-echo -n ''
-echo -n ''
-echo -n ''
-echo -n ''
+clear
 ./configure && make -j3 && sudo make install
 cd ..
 cd /usr/local
@@ -34,3 +31,7 @@ cd -
 rm -rf mp4v2-$VERSION*
 rm -f /tmp/mp4v2.tar
 rm -f /tmp/mp4v2files
+if [ -f /sbin/lfconfig ]; then
+  # probably linux
+  sudo ldconfig -vv
+fi

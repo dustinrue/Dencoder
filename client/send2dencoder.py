@@ -19,25 +19,75 @@
 # various bits of this script are copyright 2011 Dustin Rue <ruedu@dustinrue.com>
 import pika
 import sys
+import getopt
 import os
+import json
 import ConfigParser
+from dencoderCommon import findAMQPHost
 
 config = ConfigParser.RawConfigParser()
-config.read('/usr/local/etc/dencoder/dencoder.cfg')
 
-RabbitMQServer = config.get('Dencoder','RabbitMQServer')
-if len(sys.argv) < 3:
-  print 'Usage: ' + sys.argv[0] + ' <source filename> <output filename> <preset>'
-  exit()
+# The OS X installer packages install to /usr/local
+# but on Linux systems it's customary to install packages
+# to the "normal" bin location in /usr.  
+# To support this I need to place the config file in a 
+# different location depending on the OS in question
+if sys.platform == "darwin":
+  config.read('/usr/local/etc/dencoder/dencoder.cfg')
+else:
+  config.read('/etc/dencoder/dencoder.cfg')
 
-sourcefile = sys.argv[1]
-basename, extension = os.path.splitext(sourcefile)
-outputfile = basename + '.m4v'
-preset     = sys.argv[2]
+RabbitMQServer = findAMQPHost()
 
-message = '"{sourcefile": "' + sourcefile + '",\
-            "outputfile": "' + outputfile + '",\
-            "preset": "' + preset + '"}'
+def usage():
+  print "%s takes the following arguments:" % sys.argv[0]
+  print
+  print "Required"
+  print "  -f, --file=        name of the source file"
+  print "  -p, --preset=      HandBrake preset to use for encoding"
+  print
+  print "iTunes Metadata"
+  print "  -t, --title=       title of the output file"
+  print "  -d, --description= description of the output file"
+  print "  -H,                set flag indicating that the show is HD"
+  print "  -s, --season=      season number"
+  print "  -e, --episode=     episode number"
+  print
+  print "example: %s -f \"Friends.mpg\" -p \"AppleTV 2\" -t \"The one\"" % sys.argv[0]
+
+if (len(sys.argv) < 2):
+  usage()
+  sys.exit(2)
+try: 
+  opts, args = getopt.getopt(sys.argv[1:], "f:p:t:d:Hs:e:",["file=","preset=","title=","description=","season=","episode="])
+except GetoptError:
+  usage()
+  sys.exit(2)
+  
+dict = {}
+for opt, arg in opts:
+  if opt in ("-f", "--file"):
+    dict['sourcefile'] = arg
+  elif opt in ("-p", "--preset"):
+    dict['preset'] = arg
+  elif opt in ("-t", "title"):
+    dict['title'] = arg
+  elif opt in ('-d', '--description'):
+    dict['description'] = arg
+  elif opt in ('-s','--season'):
+    dict['season'] = arg
+  elif opt in ('-e','--episode'):
+    dict['season']
+    
+    
+
+
+basename, extension = os.path.splitext(dict['sourcefile'])
+dict['outputfile'] = basename + '.m4v'
+
+
+message = json.dumps(dict)
+
 
 connection = pika.AsyncoreConnection(pika.ConnectionParameters(
                RabbitMQServer))
@@ -46,6 +96,6 @@ channel.queue_declare(queue='encodejobs')
 channel.basic_publish(exchange='',
                       routing_key='encodejobs',
                       body=message)
-print " [x] Enqueued '" + sourcefile + " for encoding'"
+print " [x] Enqueued '" + dict['sourcefile'] + " for encoding'"
 connection.close()
 

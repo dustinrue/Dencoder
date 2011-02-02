@@ -29,13 +29,12 @@ import time
 import ConfigParser
 import logging
 import logging.config
-from simplejson import loads
+import json
 from os import fork, setsid, umask, dup2, getpid, chdir, setuid, setgid, kill, path, uname
 from pwd import getpwnam
 from grp import getgrnam
 from sys import stdin, stdout, stderr
-import pybonjour
-import select
+from dencoderCommon import findAMQPHost
 import sys
 import socket
 import re
@@ -154,22 +153,18 @@ def encodeVideo(filename,outfile,preset):
   gNotify(growl,"dencoder on %s has finished encoding %s using %s" % (hostname(),filename,preset,))
   return hbStatus
 
-def ackAMQPMessage(ch,method):
-  # ackknowledge that the message was received.  Here we're telling 
-  # the message queue that we're done with the job.  Future versions
-  # of this client should be able to kill an encode and NOT ack the message.
-  # This way other clients can take over and do the encode in the event that
-  # another client failed to encode the file for whatever reason.
-  logger.debug(" [*] sending message ack")
-  ch.basic_ack(delivery_tag = method.delivery_tag)
+
 
 def dojob_callback(ch, method, header, body):
   global hbpid
   try:
-    json = loads(body)
-    filename = json['sourcefile']
-    outfile  = json['outputfile']
-    preset   = json['preset']
+    print body
+    request = json.loads(body)
+    
+    # FIXME: this can be done using a dict
+    filename = request['sourcefile']
+    outfile  = request['outputfile']
+    preset   = request['preset']
   except:
     gNotify(growl,"dencoder on %s received an invalid message" % (hostname(),))
     logger.info(' [*] recieved an invalid request, ignoring but ack\'ing the message to remove from queue')
@@ -213,108 +208,6 @@ def shutdownDencoder():
 def handleSigTerm(thing1,thing2):
   shutdownDencoder()
 
-
-
-def resolve_callback(sdRef, flags, interfaceIndex, errorCode, fullname,
-                     hosttarget, port, txtRecord):
-  logger.debug(' [*] in resolve_callback')
-  if errorCode == pybonjour.kDNSServiceErr_NoError:
-    hosts.append(hosttarget)
-    resolved.append(True)
-  logger.debug(' [*] leaving resolve_callback')
-
-
-def browse_callback(sdRef, flags, interfaceIndex, errorCode, serviceName,
-                    regtype, replyDomain):
-  logger.info(' [*] attempting bonjour lookup')
-  if errorCode != pybonjour.kDNSServiceErr_NoError:
-    return
-
-  if not (flags & pybonjour.kDNSServiceFlagsAdd):
-    # needs testing but this should happen when the RabbitMQ server is 
-    # going away as advertised by Bonjour
-    logger.info( ' [*] RabbitMQ is going away')
-    return
-
-  # we get here when we've successfully queried for _amqp._tcp
-  logger.info(' [*] Found a RabbitMQ server, resolving')
-
-  resolve_sdRef = pybonjour.DNSServiceResolve(0,
-                                              interfaceIndex,
-                                              serviceName,
-                                              regtype,
-                                              replyDomain,
-                                              resolve_callback)
-
-  try:
-    while not resolved:
-      ready = select.select([resolve_sdRef], [], [], bjTimeout)
-      if resolve_sdRef not in ready[0]:
-        logger.critical( 'Resolve timed out')
-        break
-      pybonjour.DNSServiceProcessResult(resolve_sdRef)
-    else:
-      resolved.pop()
-  finally:
-    resolve_sdRef.close()
-
-
-
-
-def findAMQHost():
-
-  browse_sdRef = pybonjour.DNSServiceBrowse(regtype = regtype,
-                                            callBack = browse_callback)
-  try:
-    while not hosts:
-      logger.debug(' [*] doing bonjour resolve')
-      ready = select.select([browse_sdRef], [], [])
-      logger.debug(' [*] return from ready')
-      if browse_sdRef in ready[0]:
-        pybonjour.DNSServiceProcessResult(browse_sdRef)
-  except:
-    logger.debug(' [*] unknown error while attemping to resolve AMQP host')
-  finally:
-    browse_sdRef.close()
-  
-  
-  # if this script is unable to handle multiple AMQP servers and so we
-  # attempt to deal with it, and bail if we can't
-  if len(hosts) > 1:
-    # lets see if we're seeing multiple records for the same host
-    if len(hosts) == hosts.count(hosts[0]):
-      logger.debug(' [*] found multiple hosts but they are all the same')
-      RabbitMQServer = hosts[0]
-    else:
-      logger.critical('found too many AMQP (RabbitMQ) hosts, unable to cope!')
-      return 0
-  elif len(hosts) == 1:
-    RabbitMQServer = hosts[0]
-  else:
-    logger.critical(' [*] couldn\'t resolve any AMQP hosts')
-    return 0
-
-  return RabbitMQServer
-
-
-
-
-def declareAMQPQueue():
-  logging.debug(' [*] in declareAMQPQueue')
-  # declare a queue named encodejobs in case it hasn't already
-  # been declared.  The server will places messages here.
-  channel.queue_declare(queue='encodejobs')
-
-  # prefetch_count=1 causes this client to just get 1
-  # message from the queue.  By doing this any new client
-  # that connects to the message bus will be able to get
-  # any messages left in the queue instead of only new ones
-  # that were added after an existing client connected.  
-  # This is important so that you can scale up your encode
-  # cluster on the fly
-  channel.basic_qos(prefetch_count=1)
-  channel.basic_consume(dojob_callback,
-                        queue='encodejobs')
 
 def waitAndSee():
   logger.info(' [*] sleeping for 20 seconds')
@@ -361,6 +254,32 @@ def gNotify(growl,message):
     logger.debug(' [*] sending %s' % message)
     g.notify('message','Dencoder',message)
   logger.debug(' [*] leaving gNotify')
+  
+def ackAMQPMessage(ch,method):
+  # acknowledge that the message was received.  Here we're telling 
+  # the message queue that we're done with the job.  Future versions
+  # of this client should be able to kill an encode and NOT ack the message.
+  # This way other clients can take over and do the encode in the event that
+  # another client failed to encode the file for whatever reason.
+  #logger.debug(" [*] sending message ack")
+  ch.basic_ack(delivery_tag = method.delivery_tag)
+  
+def declareAMQPQueue():
+  #logging.debug(' [*] in declareAMQPQueue')
+  # declare a queue named encodejobs in case it hasn't already
+  # been declared.  The server will places messages here.
+  channel.queue_declare(queue='encodejobs')
+
+  # prefetch_count=1 causes this client to just get 1
+  # message from the queue.  By doing this any new client
+  # that connects to the message bus will be able to get
+  # any messages left in the queue instead of only new ones
+  # that were added after an existing client connected.  
+  # This is important so that you can scale up your encode
+  # cluster on the fly
+  channel.basic_qos(prefetch_count=1)
+  channel.basic_consume(dojob_callback,
+                        queue='encodejobs')
 
 # be ready to handle a SIGTERM and SIGINT
 signal.signal(signal.SIGTERM,handleSigTerm)
@@ -402,7 +321,7 @@ while True:
     continue
     
 
-  RabbitMQServer = findAMQHost()
+  RabbitMQServer = findAMQPHost()
   if not RabbitMQServer:
     waitAndSee()
     continue

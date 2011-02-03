@@ -47,6 +47,7 @@ def usage():
   print "  -p, --preset=      HandBrake preset to use for encoding"
   print
   print "iTunes Metadata"
+  print "  -S, --show=        name of the show"
   print "  -t, --title=       title of the output file"
   print "  -d, --description= description of the output file"
   print "  -H,                set flag indicating that the show is HD"
@@ -59,29 +60,31 @@ if (len(sys.argv) < 2):
   usage()
   sys.exit(2)
 try: 
-  opts, args = getopt.getopt(sys.argv[1:], "f:p:t:d:Hs:e:",["file=","preset=","title=","description=","season=","episode="])
-except GetoptError:
+  opts, args = getopt.getopt(sys.argv[1:], "f:p:t:d:Hs:e:S:",["file=","preset=","title=","description=","season=","episode=","show="])
+except:
   usage()
   sys.exit(2)
   
 dict = {}
 for opt, arg in opts:
-  if opt in ("-f", "--file"):
-    dict['sourcefile'] = arg
-  elif opt in ("-p", "--preset"):
-    dict['preset'] = arg
-  elif opt in ("-t", "title"):
-    dict['title'] = arg
-  elif opt in ('-d', '--description'):
+  if opt in ('-f',      '--file'):
+    dict['sourcefile']  = arg
+  elif opt in ("-p",    '--preset'):
+    dict['preset']      = arg
+  elif opt in ("-t",    '--title'):
+    dict['title']       = arg
+  elif opt in ('-d',    '--description'):
     dict['description'] = arg
-  elif opt in ('-s','--season'):
-    dict['season'] = arg
-  elif opt in ('-e','--episode'):
-    dict['season']
+  elif opt in ('-s',   '--season'):
+    dict['season']      = arg
+  elif opt in ('-e',   '--episode'):
+    dict['episode']     = arg
+  elif opt in ('-S',   '--show'):
+    dict['show']        = arg
+  elif opt in ('-H'):
+    dict['hd']          = True
     
     
-
-
 basename, extension = os.path.splitext(dict['sourcefile'])
 dict['outputfile'] = basename + '.m4v'
 

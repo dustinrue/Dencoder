@@ -53,8 +53,11 @@ else:
 
 # get config options
 hbpath         = config.get('Dencoder','hbpath')
+mp4tagsPath    = config.get('Dencoder','mp4tagsPath')
 hblog          = config.get('Dencoder','hblog')
 hberr          = config.get('Dencoder','hberr')
+mp4tagslog     = config.get('Dencoder','mp4tagslog')
+mp4tagserr     = config.get('Dencoder','mp4tagserr')
 basePath       = config.get('Dencoder','basePath') 
 sourcePath     = config.get('Dencoder','sourcePath')
 destPath       = config.get('Dencoder','destPath')
@@ -153,7 +156,33 @@ def encodeVideo(filename,outfile,preset):
   gNotify(growl,"dencoder on %s has finished encoding %s using %s" % (hostname(),filename,preset,))
   return hbStatus
 
-
+def writeMetadata(filename,metadata):
+  # these options are used to tag the file
+  try:
+    show        = metadata['show']
+    title       = metadata['title']
+    description = metadata['description']
+    season      = metadata['season']
+    episode     = metadata['episode']
+    hd          = metadata['hd']
+  except:
+    return
+  
+  
+  logger.debug(' [*] writing metadata using mp4tags')
+  logger.debug(' [*] received title=%s, description=%s, season=%d, episode=%d' % (title,description,int(season),int(episode),))
+  gNotify(growl,"%s is tagging %s" % (filename,hostname(),))
+  
+  # build the argument list for mp4tags
+  # FIXME: take advantage of the properties of a dictionary
+  # to make building the args list easier
+  args = [mp4tagsPath,'-S',"'" + show + "'",'-o',"'" + title + "'",'-m',"'" +
+          description + "'",'-M',episode, '-n',season,
+          basePath+destPath+filename]
+  logger.debug(' [*] mp4tags args are %r' % args)
+  p = subprocess.Popen(args,stdout=open(mp4tagslog, 'w'),stderr=open(mp4tagserr,'w'))
+  p.wait()
+  return
 
 def dojob_callback(ch, method, header, body):
   global hbpid
@@ -161,27 +190,36 @@ def dojob_callback(ch, method, header, body):
     print body
     request = json.loads(body)
     
-    # FIXME: this can be done using a dict
-    filename = request['sourcefile']
-    outfile  = request['outputfile']
-    preset   = request['preset']
+    
+    # these options are required to do the encode
+    filename    = request['sourcefile']
+    outfile     = request['outputfile']
+    preset      = request['preset']
+    
+
   except:
     gNotify(growl,"dencoder on %s received an invalid message" % (hostname(),))
+    logger.debug('error message is %s' % sys.exc_info()[0])
     logger.info(' [*] recieved an invalid request, ignoring but ack\'ing the message to remove from queue')
     ackAMQPMessage(ch,method)
     return
-  logger.debug(" [*] Received job with filename %r" % (filename,))
+  logger.debug(" [*] Received job with filename %s" % filename)
   if not checkPaths():
     logger.critical(' [*] unable to read the source file (%s), check paths' % filename)
     return
-  hbStatus = encodeVideo(filename,outfile,preset)
+  #hbStatus = encodeVideo(filename,outfile,preset)
+  hbStatus = True
   if not (hbStatus):
     logger.debug(' [*] handbrake didn\'t exit cleanly, not acking message')
     
     # FIX ME: not acking the message prevents client from getting another one
     ackAMQPMessage(ch,method)
   else:
+    # tag the file
+    writeMetadata(outfile,request)
+    
     ackAMQPMessage(ch,method)
+
   logger.info(" [*] Done")
   hbpid = 0
   logger.info (' [*] Waiting for encode jobs. Issue kill to %i to end' % (getpid(),))

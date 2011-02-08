@@ -47,20 +47,51 @@ def usage():
   print "  -p, --preset=      HandBrake preset to use for encoding"
   print
   print "iTunes Metadata"
-  print "  -S, --show=        name of the show"
-  print "  -t, --title=       title of the output file"
-  print "  -d, --description= description of the output file"
-  print "  -H,                set flag indicating that the show is HD"
-  print "  -s, --season=      season number"
-  print "  -e, --episode=     episode number"
+  print "  -A, -album       STR  Set the album title"
+  print "  -a, -artist      STR  Set the artist information"
+  print "  -b, -tempo       NUM  Set the tempo (beats per minute)"
+  print "  -c, -comment     STR  Set a general comment"
+  print "  -C, -copyright   STR  Set the copyright information"
+  print "  -d, -disk        NUM  Set the disk number"
+  print "  -D, -disks       NUM  Set the number of disks"
+  print "  -e, -encodedby   STR  Set the name of the person or company who encoded the file"
+  print "  -E, -tool        STR  Set the software used for encoding"
+  print "  -g, -genre       STR  Set the genre name"
+  print "  -G, -grouping    STR  Set the grouping name"
+  print "  -H, -hdvideo     NUM  Set the HD flag (1/0)"
+  print '  -i, -type        STR  Set the Media Type(tvshow, movie, music, ...)"'
+  print "  -I, -cnid        NUM  Set the cnID"
+  print "  -l, -longdesc    NUM  Set the short description"
+  print "  -L, -lyrics      NUM  Set the lyrics"
+  print "  -m, -description STR  Set the short description"
+  print "  -M, -episode     NUM  Set the episode number"
+  print "  -n, -season      NUM  Set the season number"
+  print "  -N, -network     STR  Set the TV network"
+  print "  -o, -episodeid   STR  Set the TV episode ID"
+  print "  -P, -picture     PTH  Set the picture as a .png"
+  print "  -s, -song        STR  Set the song title"
+  print "  -S  -show        STR  Set the TV show"
+  print "  -t, -track       NUM  Set the track number"
+  print "  -T, -tracks      NUM  Set the number of tracks"
+  print "  -w, -writer      STR  Set the composer information"
+  print "  -y, -year        NUM  Set the release date"
+  print "  -R, -albumartist STR  Set the album artist"
+  print '  -r, -remove      STR  Remove tags by code (e.g. "-r cs"'
+  print "                        removes the comment and song tags)"
   print
-  print "example: %s -f \"Friends.mpg\" -p \"AppleTV 2\" -t \"The one\"" % sys.argv[0]
+  print "example: %s -f \"Friends.mpg\" -p \"AppleTV 2\" -s \"The one\"" % sys.argv[0]
 
 if (len(sys.argv) < 2):
   usage()
   sys.exit(2)
-try: 
-  opts, args = getopt.getopt(sys.argv[1:], "f:p:t:d:Hs:e:S:",["file=","preset=","title=","description=","season=","episode=","show="])
+try:
+
+  opts, args = getopt.getopt(sys.argv[1:], "A:a:b:c:C:d:D:e:E:g:G:H:i:I:l:L:m:M:n:N:o:P:s:S:t:T:w:y:R:r:",
+                             ["album=","artist=","tempo=","comment=","copyright=","disk=","disks=",
+                              "encodedby=","tool=","genre=","grouping=","hdivdeo=","type=",
+                              "cnid=","longdesc=","lyrics=","description=","episode=","season=",
+                              "network=","episodeid=","picture=","song=","show=","track=",
+                              "tracks=","writer=","year=","albumartist=","remove="])
 except:
   usage()
   sys.exit(2)

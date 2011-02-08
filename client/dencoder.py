@@ -229,9 +229,7 @@ def stopEncodes():
     logger.debug(' [*] killing HandiBrakeCLI at pid %i' % (hbpid,))
     kill(hbpid,signal.SIGTERM)
 
-def disconnectRabbitMQ():
-  global channel
-  channel.close()
+
   
 def shutdownDencoder():
   gNotify(growl,'Dencoder on %s is shutting down' % (hostname(),) )
@@ -293,6 +291,13 @@ def gNotify(growl,message):
     g.notify('message','Dencoder',message)
   logger.debug(' [*] leaving gNotify')
   
+def disconnectRabbitMQ():
+  try:
+    global channel
+    channel.close()
+  except:
+    pass
+  
 def ackAMQPMessage(ch,method):
   # acknowledge that the message was received.  Here we're telling 
   # the message queue that we're done with the job.  Future versions
@@ -351,12 +356,12 @@ while True:
   # even though it wasn't
   if not checkPaths():
     logger.critical(" [*] source path (%s) doesn't exist, is the file system mounted?" % (basePath + sourcePath,))
-    # on OS X we can cause dencoder.py to run when a file system is mounted,
-    # should an option exist here to check for darwin and then exit now
-    # if darwin is detected knowing that dencoder.py will simply restart
-    # when a new FS is mounted?
-    waitAndSee()
-    continue
+
+    if sys.platform == "darwin":
+      shutdownDencoder()
+    else:
+      waitAndSee()
+      continue
     
 
   RabbitMQServer = findAMQPHost()

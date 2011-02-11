@@ -47,36 +47,36 @@ def usage():
   print "  -p, --preset=      HandBrake preset to use for encoding"
   print
   print "iTunes Metadata"
-  print "  -A, -album       STR  Set the album title"
-  print "  -a, -artist      STR  Set the artist information"
-  print "  -b, -tempo       NUM  Set the tempo (beats per minute)"
-  print "  -c, -comment     STR  Set a general comment"
-  print "  -C, -copyright   STR  Set the copyright information"
-  print "  -d, -disk        NUM  Set the disk number"
-  print "  -D, -disks       NUM  Set the number of disks"
-  print "  -e, -encodedby   STR  Set the name of the person or company who encoded the file"
-  print "  -E, -tool        STR  Set the software used for encoding"
-  print "  -g, -genre       STR  Set the genre name"
-  print "  -G, -grouping    STR  Set the grouping name"
-  print "  -H, -hdvideo     NUM  Set the HD flag (1/0)"
-  print '  -i, -type        STR  Set the Media Type(tvshow, movie, music, ...)"'
-  print "  -I, -cnid        NUM  Set the cnID"
-  print "  -l, -longdesc    NUM  Set the short description"
-  print "  -L, -lyrics      NUM  Set the lyrics"
-  print "  -m, -description STR  Set the short description"
-  print "  -M, -episode     NUM  Set the episode number"
-  print "  -n, -season      NUM  Set the season number"
-  print "  -N, -network     STR  Set the TV network"
-  print "  -o, -episodeid   STR  Set the TV episode ID"
-  print "  -P, -picture     PTH  Set the picture as a .png"
-  print "  -s, -song        STR  Set the song title"
-  print "  -S  -show        STR  Set the TV show"
-  print "  -t, -track       NUM  Set the track number"
-  print "  -T, -tracks      NUM  Set the number of tracks"
-  print "  -w, -writer      STR  Set the composer information"
-  print "  -y, -year        NUM  Set the release date"
-  print "  -R, -albumartist STR  Set the album artist"
-  print '  -r, -remove      STR  Remove tags by code (e.g. "-r cs"'
+  print "  -A, --album       STR  Set the album title"
+  print "  -a, --artist      STR  Set the artist information"
+  print "  -b, --tempo       NUM  Set the tempo (beats per minute)"
+  print "  -c, --comment     STR  Set a general comment"
+  print "  -C, --copyright   STR  Set the copyright information"
+  print "  -d, --disk        NUM  Set the disk number"
+  print "  -D, --disks       NUM  Set the number of disks"
+  print "  -e, --encodedby   STR  Set the name of the person or company who encoded the file"
+  print "  -E, --tool        STR  Set the software used for encoding"
+  print "  -g, --genre       STR  Set the genre name"
+  print "  -G, --grouping    STR  Set the grouping name"
+  print "  -H, --hdvideo     NUM  Set the HD flag (1/0)"
+  print '  -i, --type        STR  Set the Media Type(tvshow, movie, music, ...)"'
+  print "  -I, --cnid        NUM  Set the cnID"
+  print "  -l, --longdesc    NUM  Set the short description"
+  print "  -L, --lyrics      NUM  Set the lyrics"
+  print "  -m, --description STR  Set the short description"
+  print "  -M, --episode     NUM  Set the episode number"
+  print "  -n, --season      NUM  Set the season number"
+  print "  -N, --network     STR  Set the TV network"
+  print "  -o, --episodeid   STR  Set the TV episode ID"
+  print "  -P, --picture     PTH  Set the picture as a .png"
+  print "  -s, --song        STR  Set the song title"
+  print "  -S  --show        STR  Set the TV show"
+  print "  -t, --track       NUM  Set the track number"
+  print "  -T, --tracks      NUM  Set the number of tracks"
+  print "  -w, --writer      STR  Set the composer information"
+  print "  -y, --year        NUM  Set the release date"
+  print "  -R, --albumartist STR  Set the album artist"
+  print '  -r, --remove      STR  Remove tags by code (e.g. "-r cs"'
   print "                        removes the comment and song tags)"
   print
   print "example: %s -f \"Friends.mpg\" -p \"AppleTV 2\" -s \"The one\"" % sys.argv[0]
@@ -95,25 +95,75 @@ try:
 except:
   usage()
   sys.exit(2)
-  
+
+# I don't doubt there is a better way to do what I'm doing below
+# and I'd happily take suggestions
 dict = {}
 for opt, arg in opts:
   if opt in ('-f',      '--file'):
     dict['sourcefile']  = arg
   elif opt in ("-p",    '--preset'):
     dict['preset']      = arg
-  elif opt in ("-t",    '--title'):
-    dict['title']       = arg
-  elif opt in ('-d',    '--description'):
+  elif opt in ('-A',    '--album'):
+    dict['album']       = arg
+  elif opt in ('-a',    '--artist'):
+    dict['artist']      = arg
+  elif opt in ('-b',    '--tempo'):
+    dict['tempo']       = arg
+  elif opt in ('-c',    '--comment'):
+    dict['comment']     = arg
+  elif opt in ('-C',    '--copyright'):
+    dict['copyright']   = arg
+  elif opt in ('-d',    '--disk'):
+    dict['disk']        = arg
+  elif opt in ('-D',    '--disks'):
+    dict['disks']       = arg
+  elif opt in ('e',     '--encodedby'):
+    dict['encodedby']   = arg
+  elif opt in ('-E',    '--tool'):
+    dict['tool']        = arg
+  elif opt in ('-g',    '--genre'):
+    dict['genre']       = arg
+  elif opt in ('-G',    '--grouping'):
+    dict['grouping']    = arg
+  elif opt in ('-H',    '--hdvideo'):
+    dict['hdvideo']     = arg
+  elif opt in ('-i',    '--type'):
+    dict['type']        = arg
+  elif opt in ('-I',    '--cnid'):
+    dict['cnid']        = arg
+  elif opt in ('-l',    '--longdesc'):
+    dict['longdesc']    = arg
+  elif opt in ('-L',    '--lyrics'):
+    dict['lyrics']      = arg
+  elif opt in ('-m',    '--description'):
     dict['description'] = arg
-  elif opt in ('-s',   '--season'):
-    dict['season']      = arg
-  elif opt in ('-e',   '--episode'):
+  elif opt in ('-M',    '--episode'):
     dict['episode']     = arg
-  elif opt in ('-S',   '--show'):
+  elif opt in ('-n',    '--season'):
+    dict['season']      = arg
+  elif opt in ('-N',    '--network'):
+    dict['network']     = arg
+  elif opt in ('-o',    '--episodeid'):
+    dict['episodeid']   = arg
+  elif opt in ('-P',    '--picture'):
+    dict['picture']     = arg
+  elif opt in ('-s',    '--song'):
+    dict['song']        = arg
+  elif opt in ('-S',    '--show'):
     dict['show']        = arg
-  elif opt in ('-H'):
-    dict['hd']          = True
+  elif opt in ('-t',    '--track'):
+    dict['track']       = arg
+  elif opt in ('-T',    '--tracks'):
+    dict['tracks']      = arg
+  elif opt in ('-w',    '--writer'):
+    dict['writer']      = arg
+  elif opt in ('-y',    '--year'):
+    dict['year']        = arg
+  elif opt in ('-R',    '--albumartist'):
+    dict['albumarist']  = arg
+  elif opt in ('-r',    '--remove'):
+    dict['remove']      = arg
     
     
 basename, extension = os.path.splitext(dict['sourcefile'])

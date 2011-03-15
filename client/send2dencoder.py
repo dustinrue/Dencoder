@@ -23,7 +23,7 @@ import getopt
 import os
 import json
 import ConfigParser
-from dencoderCommon import findAMQPHost
+import dencoderAMQP
 
 config = ConfigParser.RawConfigParser()
 
@@ -37,7 +37,7 @@ if sys.platform == "darwin":
 else:
   config.read('/etc/dencoder/dencoder.cfg')
 
-RabbitMQServer = findAMQPHost()
+RabbitMQServer = dencoderAMQP.AMQPConnection()
 
 def usage():
   print "%s takes the following arguments:" % sys.argv[0]
@@ -84,17 +84,17 @@ def usage():
 if (len(sys.argv) < 2):
   usage()
   sys.exit(2)
-try:
+#try:
 
-  opts, args = getopt.getopt(sys.argv[1:], "A:a:b:c:C:d:D:e:E:g:G:H:i:I:l:L:m:M:n:N:o:P:s:S:t:T:w:y:R:r:",
+opts, args = getopt.getopt(sys.argv[1:], "A:a:b:c:C:d:D:e:E:f:g:G:H:i:I:l:L:m:M:n:N:o:p:P:s:S:t:T:w:y:R:r:",
                              ["album=","artist=","tempo=","comment=","copyright=","disk=","disks=",
-                              "encodedby=","tool=","genre=","grouping=","hdivdeo=","type=",
+                              "encodedby=","tool=","file=","genre=","grouping=","hdivdeo=","type=",
                               "cnid=","longdesc=","lyrics=","description=","episode=","season=",
-                              "network=","episodeid=","picture=","song=","show=","track=",
+                              "network=","episodeid=","preset=","picture=","song=","show=","track=",
                               "tracks=","writer=","year=","albumartist=","remove="])
-except:
-  usage()
-  sys.exit(2)
+#except:
+#  usage()
+#  sys.exit(2)
 
 # I don't doubt there is a better way to do what I'm doing below
 # and I'd happily take suggestions
@@ -174,7 +174,7 @@ message = json.dumps(dict)
 
 
 connection = pika.AsyncoreConnection(pika.ConnectionParameters(
-               RabbitMQServer))
+               RabbitMQServer.getSelectedHost()))
 channel = connection.channel()
 channel.queue_declare(queue='encodejobs')
 channel.basic_publish(exchange='',

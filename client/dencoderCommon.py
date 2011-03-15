@@ -19,91 +19,59 @@
 # various bits of this script are copyright 2011 Dustin Rue <ruedu@dustinrue.com>
 import pybonjour
 import select
+import time
+import re
+import os
+import logging
 hosts = []
 resolved = []
 bjTimeout = 5
+channel = ''
+logger = logging.getLogger()
+
+def copyInLogger(incoming_logger):
+    logger = incoming_logger
+    
+def hostname():
+  return re.sub(r'\..*', '', os.uname()[1])
   
-def resolve_callback(sdRef, flags, interfaceIndex, errorCode, fullname,
-                     hosttarget, port, txtRecord):
- # logger.debug(' [*] in resolve_callback')
-  if errorCode == pybonjour.kDNSServiceErr_NoError:
-    hosts.append(hosttarget)
-    resolved.append(True)
- # logger.debug(' [*] leaving resolve_callback')
-
-
-def browse_callback(sdRef, flags, interfaceIndex, errorCode, serviceName,
-                    regtype, replyDomain):
-
-  #logger.info(' [*] attempting bonjour lookup')
-  if errorCode != pybonjour.kDNSServiceErr_NoError:
-
+    
+def waitAndSee():
+  time.sleep(20)
+def initGrowlNotifier():
+  listOfGrowlInstances = []
+ 
+  if enableGrowl == "False":
     return
+  
 
-  if not (flags & pybonjour.kDNSServiceFlagsAdd):
-    # needs testing but this should happen when the RabbitMQ server is 
-    # going away as advertised by Bonjour
-  #  logger.info( ' [*] RabbitMQ is going away')
-    return
-
-  # we get here when we've successfully queried for _amqp._tcp
-  #logger.info(' [*] Found a RabbitMQ server, resolving')
-
-
-  resolve_sdRef = pybonjour.DNSServiceResolve(0,
-                                              interfaceIndex,
-                                              serviceName,
-                                              regtype,
-                                              replyDomain,
-                                              resolve_callback)
-
-  try:
-    while not resolved:
-      ready = select.select([resolve_sdRef], [], [], bjTimeout)
-      if resolve_sdRef not in ready[0]:
-        #logger.critical( 'Resolve timed out')
-        break
-      pybonjour.DNSServiceProcessResult(resolve_sdRef)
+  for host in growlHosts:
+    hostname = host[0]
+    password = host[1]
+    
+    
+    if hostname is not None and hostname is not "localhost" and password is not None:
+      logger.debug(' [*] adding remote growl instance using using %s and %s' % (hostname,password,))
+      
+      tmp = Growl.GrowlNotifier('Dencoder',['message'],[],'',hostname,password)
+      tmp.register()
+      listOfGrowlInstances.append(tmp)
     else:
-      resolved.pop()
-  finally:
-    resolve_sdRef.close()
+      logger.debug(' [*] adding local growl instance')
+      tmp = Growl.GrowlNotifier('Dencoder',['message'])
+      tmp.register()
+      listOfGrowlInstances.append(tmp)
+    
+  return listOfGrowlInstances
 
-
-
-def findAMQPHost():
+def gNotify(message):
+  logger.debug(' [*] in gNotify')
   
-  browse_sdRef = pybonjour.DNSServiceBrowse(regtype = '_amqp._tcp',
-                                            callBack = browse_callback)
   try:
-    while not hosts:
-   #   logger.debug(' [*] doing bonjour resolve')
-      ready = select.select([browse_sdRef], [], [])
-    #  logger.debug(' [*] return from ready')
-      if browse_sdRef in ready[0]:
-        pybonjour.DNSServiceProcessResult(browse_sdRef)
+    for g in growl:
+      logger.debug(' [*] attempting to send Growl notification')
+      logger.debug(' [*] sending %s' % message)
+      g.notify('message','Dencoder',message)
+    logger.debug(' [*] leaving gNotify')
   except:
-    #logger.debug(' [*] unknown error while attemping to resolve AMQP host')
-    pass
-  finally:
-    browse_sdRef.close()
-  
-  
-  # if this script is unable to handle multiple AMQP servers and so we
-  # attempt to deal with it, and bail if we can't
-  if len(hosts) > 1:
-    # lets see if we're seeing multiple records for the same host
-    if len(hosts) == hosts.count(hosts[0]):
-      #logger.debug(' [*] found multiple hosts but they are all the same')
-      RabbitMQServer = hosts[0]
-    else:
-      #logger.critical('found too many AMQP (RabbitMQ) hosts, unable to cope!')
-      return 0
-  elif len(hosts) == 1:
-    RabbitMQServer = hosts[0]
-  else:
-    #logger.critical(' [*] couldn\'t resolve any AMQP hosts')
-
-    return 0
-
-  return RabbitMQServer
+    logger.debug('failed to issue growl notification, growl not defined?')
